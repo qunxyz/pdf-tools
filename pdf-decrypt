@@ -1,0 +1,120 @@
+#!/bin/bash
+# shopt -s extglob
+SRC_INDEX=1
+OUT_INDEX=2
+FORCE_INDEX=3
+HELP_INDEX=0
+IS_FORCE=0
+
+function usage() {
+usage="usage: $(basename "$0") [-h] [-s source pdf] [-o output-file] [-f]  -- program to remove any encryption from pdf file
+
+where:
+    -h|--help  show this help message
+    -f|--force force remove
+    -s|--src  set source pdf path
+    -o|--out set output file path"
+echo "$usage"
+}
+
+function unknown_err() {
+    error="unknown argument $arg"
+    echo "$error"
+    usage
+}
+
+if [[ $# -eq 0 ]]; then
+    usage
+    exit
+fi
+
+for arg in "$@"
+do
+    case $arg in
+        -s|--src)
+            INDEX=SRC_INDEX
+            continue
+        shift # past argument
+        ;;
+        -o|--out)
+            INDEX=OUT_INDEX
+            continue
+        shift # past argument
+        ;;
+        -f|--force)
+            INDEX=FORCE_INDEX
+            IS_FORCE=1
+            continue
+        shift # past argument
+        ;;
+        -h|--help)
+            INDEX=HELP_INDEX
+            usage
+            exit
+        ;;
+        *)
+            if [[ $arg =~ ^[\-] ]]; then
+                # unknown option
+                unknown_err
+                exit 1
+            fi
+        ;;
+    esac
+    shift # past argument or value
+
+    if [[ "${VALUES[${INDEX}]}" == "" ]]; then
+        VALUES[$INDEX]="${arg}"
+    else
+        VALUES[$INDEX]="${VALUES[${INDEX}]}||${arg}"
+    fi
+done
+
+SRC="${VALUES[SRC_INDEX]}"
+OUT="${VALUES[OUT_INDEX]}"
+
+# if [[ $OUT == "" ]]; then
+#     echo "output file must specified"
+#     usage
+#     exit 1
+# fi
+
+if [[ ! -f "${SRC}" ]]; then
+    echo "source paf file not found: ${SRC}"
+    usage
+    exit 1
+fi
+
+# while IFS='||' read -ra PDF; do
+#     for item in "${PDF[@]}"; do
+#         if [[ ! -f "${item}" ]]; then
+#             echo "pdf not found: ${item}"
+#             usage
+#             exit 1
+#         fi
+#         if [[ $PDF_LIST == "" ]]; then
+#             PDF_LIST="${item}"
+#             FIRST_PDF="${item}"
+#         else
+#             PDF_LIST="${PDF_LIST} ${item}"
+#         fi
+#     done
+# done <<< "$PDF"
+
+if [[ $OUT == "" ]]; then
+    OUT="${SRC}"
+fi
+
+TMP_NAME="$$"
+TMP_PDF="/tmp/${TMP_NAME}.pdf"
+TMP_OK_PDF="/tmp/${TMP_NAME}.ok.pdf"
+
+if [ $IS_FORCE == 1 ]; then
+    #cmd="pdftocairo \"${SRC}\" -pdf \"${TMP_OK_PDF}\" && gs -q -dNOPAUSE -dBATCH -sDEVICE=pdfwrite -sOutputFile=\"${TMP_PDF}\" -c .setpdfwrite -f \"${TMP_OK_PDF}\" && mv \"${TMP_PDF}\" \"${OUT}\" && rm \"${TMP_OK_PDF}\""
+    cmd="pdftocairo \"${SRC}\" -pdf \"${TMP_OK_PDF}\" && mv \"${TMP_OK_PDF}\" \"${OUT}\""
+else
+    cmd="gs -q -dNOPAUSE -dBATCH -sDEVICE=pdfwrite -sOutputFile=\"${TMP_PDF}\" -c .setpdfwrite -f \"${SRC}\" && mv \"${TMP_PDF}\" \"${OUT}\""
+fi
+
+eval "${cmd}"
+
+echo "Ok"

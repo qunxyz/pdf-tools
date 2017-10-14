@@ -1,0 +1,139 @@
+#!/bin/bash
+# shopt -s extglob
+COVER_INDEX=1
+PDF_INDEX=2
+OUT_INDEX=3
+HELP_INDEX=0
+
+function usage() {
+usage="usage: $(basename "$0") [-h] [-c cover] [-o output-file] -p pdf1 pdf2... -- program to merge cover and multiple pdf files to a single pdf file
+
+where:
+    -h|--help  show this help message
+    -c|--cover  set cover path
+    -p|--pdf set pdf file path
+    -o|--out set output file path, ignore would used the first pdf path"
+echo "$usage"
+}
+
+function unknown_err() {
+    error="unknown argument $arg"
+    echo "$error"
+    usage
+}
+
+if [[ $# -eq 0 ]]; then
+    usage
+    exit
+fi
+
+for arg in "$@"
+do
+    case $arg in
+        -c|--cover)
+            INDEX=COVER_INDEX
+            continue
+        shift # past argument
+        ;;
+        -p|--pdf)
+            INDEX=PDF_INDEX
+            continue
+        shift # past argument
+        ;;
+        -o|--out)
+            INDEX=OUT_INDEX
+            continue
+        shift # past argument
+        ;;
+        -h|--help)
+            INDEX=HELP_INDEX
+            usage
+            exit
+        ;;
+        *)
+            if [[ $arg =~ ^[\-] ]]; then
+                # unknown option
+                unknown_err
+                exit 1
+            fi
+        ;;
+    esac
+    shift # past argument or value
+
+    if [[ "${VALUES[${INDEX}]}" == "" ]]; then
+        VALUES[$INDEX]="${arg}"
+    else
+        VALUES[$INDEX]="${VALUES[${INDEX}]}||${arg}"
+    fi
+done
+
+COVER="${VALUES[COVER_INDEX]}"
+PDF="${VALUES[PDF_INDEX]}"
+OUT="${VALUES[OUT_INDEX]}"
+
+if [[ $PDF == "" ]]; then
+    echo "pdf must specified"
+    usage
+    exit 1
+fi
+
+# if [[ $OUT == "" ]]; then
+#     echo "output file must specified"
+#     usage
+#     exit 1
+# fi
+
+# if [[ ! -f "${COVER}" ]]; then
+#     echo "cover not found: ${COVER}"
+#     usage
+#     exit 1
+# fi
+
+pdf_index=0
+while IFS='||' read -ra PDF; do
+    for item in "${PDF[@]}"; do
+        if [[ $item == "" ]]; then
+            continue
+        fi
+        if [[ ! -f "$item" ]]; then
+            echo "pdf not found: ${item}"
+            usage
+            exit 1
+        fi
+        
+        PDF_LIST[pdf_index]="${item}"
+        pdf_index=$((pdf_index + 1))
+    done
+done <<< "$PDF"
+
+if [[ $OUT == "" ]]; then
+    OUT="${PDF_LIST[0]}"
+fi
+
+TMP_NAME="$$"
+TMP_OK_PDF="/tmp/${TMP_NAME}.ok.pdf"
+
+if [[ -f "${COVER}" ]]; then
+    TMP_PDF="/tmp/${TMP_NAME}.pdf"
+    cmd="convert \"${COVER}\"  -fill white -undercolor '#0000' -pointsize 15 -gravity north  \"${TMP_PDF}\" &&"
+fi
+
+cmd="${cmd} pdftk"
+if [[ $TMP_PDF != "" ]]; then
+    cmd="${cmd} \"${TMP_PDF}\""
+fi
+
+for pdf in "${PDF_LIST[@]}"; do
+    cmd="${cmd} \"${pdf}\""
+done
+cmd="${cmd} output \"${TMP_OK_PDF}\" flatten"
+
+if [[ $TMP_PDF != "" ]]; then
+    cmd="${cmd} && rm \"${TMP_PDF}\""
+fi
+
+cmd="${cmd} && cp \"${TMP_OK_PDF}\" \"${OUT}\" && rm \"${TMP_OK_PDF}\""
+#echo -e "${cmd}\n"
+eval "${cmd}"
+
+echo "Ok"
